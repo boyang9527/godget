@@ -1,1 +1,1 @@
-# godget: A library extension for Go languge 
+# godget: An extension library for Go languge 
