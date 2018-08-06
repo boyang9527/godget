@@ -14,6 +14,7 @@ type TSDCache struct {
 	data     []TSD
 	capacity int
 	cursor   int
+	num      int
 }
 
 func NewTSDCache(capacity int) *TSDCache {
@@ -28,12 +29,8 @@ func NewTSDCache(capacity int) *TSDCache {
 	}
 }
 
-func (c *TSDCache) isEmpty() bool {
-	return c.cursor == 0 && c.data[c.cursor] == nil
-}
-
 func (c *TSDCache) binarySearch(t int64) int {
-	if c.isEmpty() {
+	if c.num == 0 {
 		return 0
 	}
 	var l, r int
@@ -62,7 +59,11 @@ func (c *TSDCache) Put(d TSD) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.isEmpty() || d.Timestamp() >= c.data[((c.cursor-1)+c.capacity)%c.capacity].Timestamp() {
+	defer func() {
+		c.num++
+	}()
+
+	if c.num == 0 || d.Timestamp() >= c.data[((c.cursor-1)+c.capacity)%c.capacity].Timestamp() {
 		c.data[c.cursor] = d
 		c.cursor = (c.cursor + 1) % c.capacity
 		return
@@ -104,12 +105,17 @@ func (c *TSDCache) String() string {
 	return fmt.Sprint(s)
 }
 
-/*
- Query returns the time series with the timestamp in [start, end)
-*/
-func (c *TSDCache) Query(start, end int64) []TSD {
+//
+//  Query returns the time series with the timestamp in [start, end)
+//  If it can not guarantee all the data are in cache, it returns nil and false
+//
+func (c *TSDCache) Query(start, end int64) ([]TSD, bool) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
+	if c.num > c.capacity && c.data[c.cursor].Timestamp() >= start {
+		return nil, false
+	}
 
 	from := c.binarySearch(start)
 	to := c.binarySearch(end)
@@ -118,5 +124,5 @@ func (c *TSDCache) Query(start, end int64) []TSD {
 	for i := 0; i < length; i++ {
 		result[i] = c.data[(from+i)%c.capacity]
 	}
-	return result
+	return result, true
 }
